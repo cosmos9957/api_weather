@@ -31,7 +31,7 @@ def extract_data():
         return response_api.json()
 
     except requests.exceptions.RequestException as e:
-        logging.error(f"Requesting weather data for city={CITY} is not successful. Error: {e}")
+        logging.error(f"Requesting weather data for city={CITY} is not successful. Error: {e}", exc_info=True)
         raise
 
 
@@ -54,7 +54,7 @@ def transform_data(weather_dict):
         raise
 
     except TypeError as e:
-        logging.error(f"Invalid data format: {e}")
+        logging.error(f"Invalid data format: {e}", exc_info=True)
         raise
 
 
@@ -75,8 +75,17 @@ def load_data(city, temp, wind_speed, weather_time, feels_like, description):
         cursor = conn.cursor()
 
         cursor.execute("""INSERT INTO weather (city, temp, wind_speed, weather_time, feels_like, description) 
-                                VALUES (%s, %s, %s, %s, %s, %s);""",
-                         (city, temp, wind_speed, weather_time, feels_like, description))
+                                VALUES (%(city)s, %(temp)s, %(wind_speed)s, %(weather_time)s, %(feels_like)s, 
+                                %(description)s);""",
+                       {
+                           "city": city,
+                           "temp": temp,
+                           "wind_speed": wind_speed,
+                           "weather_time": weather_time,
+                           "feels_like": feels_like,
+                           "description": description
+                       }
+                    )
         conn.commit()
 
         logging.info(f"Successfully loaded data into DB for city={city}")
