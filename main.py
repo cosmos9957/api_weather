@@ -35,7 +35,7 @@ def extract_data():
         raise
 
 
-def transform_data(weather_dict):
+def transform_data(weather_dict: dict) -> dict:
     try:
         city = weather_dict["name"]
         wind_speed = weather_dict["wind"]["speed"]
@@ -44,13 +44,23 @@ def transform_data(weather_dict):
         feels_like = weather_dict["main"]["feels_like"]
         description = weather_dict["weather"][0]["description"]
 
-        logging.info(f"""Transformed data: city={city}, temp={temp}, wind_speed={wind_speed}, 
-                    weather_time={weather_time}, feels_like={feels_like}, description={description}""")
+        logging.info(f"Transformed data: city={city}, temp={temp}, wind_speed={wind_speed}, "
+                     f"weather_time={weather_time}, feels_like={feels_like}, description={description}")
 
-        return city, temp, wind_speed, weather_time, feels_like, description
+        data = {
+            "city": city,
+            "temp": temp,
+            "wind_speed": wind_speed,
+            "weather_time": weather_time,
+            "feels_like": feels_like,
+            "description": description
+        }
+
+        return data
 
     except KeyError as e:
-        logging.error(f"Missing key in API response for city={CITY}: {e}", exc_info=True)
+        logging.error(f"Missing key in API response for city={weather_dict.get('name')}: {e}",
+                      exc_info=True)
         raise
 
     except TypeError as e:
@@ -58,12 +68,11 @@ def transform_data(weather_dict):
         raise
 
 
-def load_data(city, temp, wind_speed, weather_time, feels_like, description):
+def load_data(data: dict):
     conn = None
     cursor = None
     try:
-        logging.info(f"""Start loading data for city={city}, temp={temp}, wind_speed={wind_speed}, 
-                    weather_time={weather_time}, feels_like={feels_like}, description={description}""")
+        logging.info(f"Start loading data for city={data.get('city', 'UNKNOWN')}")
 
         conn = psycopg2.connect(
             dbname=os.getenv("DBNAME"),
@@ -74,21 +83,13 @@ def load_data(city, temp, wind_speed, weather_time, feels_like, description):
         )
         cursor = conn.cursor()
 
-        cursor.execute("""INSERT INTO weather (city, temp, wind_speed, weather_time, feels_like, description) 
-                                VALUES (%(city)s, %(temp)s, %(wind_speed)s, %(weather_time)s, %(feels_like)s, 
-                                %(description)s);""",
-                       {
-                           "city": city,
-                           "temp": temp,
-                           "wind_speed": wind_speed,
-                           "weather_time": weather_time,
-                           "feels_like": feels_like,
-                           "description": description
-                       }
-                    )
+        query = """INSERT INTO weather (city, temp, wind_speed, weather_time, feels_like, description) 
+                VALUES (%(city)s, %(temp)s, %(wind_speed)s, %(weather_time)s, %(feels_like)s, %(description)s);"""
+
+        cursor.execute(query, data)
         conn.commit()
 
-        logging.info(f"Successfully loaded data into DB for city={city}")
+        logging.info(f"Successfully loaded data into DB for city={data.get('city', 'UNKNOWN')}")
 
     except psycopg2.Error as e:
         logging.error(f"Database error: {e}", exc_info=True)
@@ -108,8 +109,8 @@ def load_data(city, temp, wind_speed, weather_time, feels_like, description):
 
 def main():
     weather_dict = extract_data()
-    city, temp, wind_speed, weather_time, feels_like, description  = transform_data(weather_dict)
-    load_data(city, temp, wind_speed, weather_time, feels_like, description)
+    data = transform_data(weather_dict)
+    load_data(data)
 
 if __name__ == "__main__":
     main()
