@@ -1,3 +1,4 @@
+import time
 import logging
 import os
 from datetime import datetime, timezone
@@ -21,19 +22,21 @@ url = f"https://api.openweathermap.org/data/2.5/weather?q={CITY}&appid={API_KEY}
 
 
 def extract_data():
-    try:
-        logging.info(f"Requesting weather data for city={CITY}")
+    for attempt in range(3):
+        try:
+            logging.info(f"Requesting weather data for city={CITY}")
 
-        response_api = requests.get(url, timeout=5)
-        response_api.raise_for_status()
+            response_api = requests.get(url, timeout=3)
+            response_api.raise_for_status()
 
-        logging.info("Weather data successfully received")
-        return response_api.json()
-
-    except requests.exceptions.RequestException as e:
-        logging.error(f"Requesting weather data for city={CITY} is not successful. Error: {e}", exc_info=True)
-        raise
-
+            logging.info("Weather data successfully received")
+            return response_api.json()
+        except requests.exceptions.RequestException as e:
+            logging.error(f"Requesting weather data for city={CITY} is not successful. Error: {e}",exc_info=True)
+            if attempt == 2:
+                raise
+            time.sleep(2 ** attempt)
+    raise RuntimeError("Failed to fetch data after retries")
 
 def transform_data(weather_dict: dict) -> dict:
     try:
@@ -107,6 +110,13 @@ def load_data(data: dict):
             conn.close()
 
 
+# def retry(retries=3):
+#     for attempt in range(retries):
+#         except (requests.exceptions.RequestException, psycopg2.Error) as e:
+#             if e.response is None or 500 <= e.response.status_code < 600 or e.response.status_code == 429:
+#                 retry
+#             else:
+#                 raise
 def main():
     weather_dict = extract_data()
     data = transform_data(weather_dict)
