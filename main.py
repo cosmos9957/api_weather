@@ -21,7 +21,7 @@ RESPONSE_FORMAT = os.getenv("RESPONSE_FORMAT")
 url = f"https://api.openweathermap.org/data/2.5/weather?q={CITY}&appid={API_KEY}&units={RESPONSE_FORMAT}"
 
 
-def extract_data():
+def extract_data() -> dict:
     for attempt in range(3):
         try:
             logging.info(f"Requesting weather data for city={CITY}")
@@ -35,7 +35,7 @@ def extract_data():
             logging.error(f"Requesting weather data for city={CITY} is not successful. Error: {e}",exc_info=True)
             if attempt == 2:
                 raise
-            time.sleep(2 ** attempt)
+            time.sleep(2 ** (attempt + 1))
     raise RuntimeError("Failed to fetch data after retries")
 
 def transform_data(weather_dict: dict) -> dict:
@@ -72,51 +72,48 @@ def transform_data(weather_dict: dict) -> dict:
 
 
 def load_data(data: dict):
-    conn = None
-    cursor = None
-    try:
-        logging.info(f"Start loading data for city={data.get('city', 'UNKNOWN')}")
+    for attempt in range(3):
+        conn = None
+        cursor = None
+        try:
+            logging.info(f"Start loading data for city={data.get('city', 'UNKNOWN')}")
 
-        conn = psycopg2.connect(
-            dbname=os.getenv("DBNAME"),
-            user=os.getenv("DB_USER"),
-            password=os.getenv("DB_PASSWORD"),
-            host=os.getenv("HOST"),
-            port=os.getenv("PORT")
-        )
-        cursor = conn.cursor()
+            conn = psycopg2.connect(
+                dbname=os.getenv("DBNAME"),
+                user=os.getenv("DB_USER"),
+                password=os.getenv("DB_PASSWORD"),
+                host=os.getenv("HOST"),
+                port=os.getenv("PORT")
+            )
+            cursor = conn.cursor()
 
-        query = """INSERT INTO weather (city, temp, wind_speed, weather_time, feels_like, description) 
-                VALUES (%(city)s, %(temp)s, %(wind_speed)s, %(weather_time)s, %(feels_like)s, %(description)s);"""
+            query = """INSERT INTO weather (city, temp, wind_speed, weather_time, feels_like, description) 
+                    VALUES (%(city)s, %(temp)s, %(wind_speed)s, %(weather_time)s, %(feels_like)s, %(description)s);"""
 
-        cursor.execute(query, data)
-        conn.commit()
+            cursor.execute(query, data)
+            conn.commit()
 
-        logging.info(f"Successfully loaded data into DB for city={data.get('city', 'UNKNOWN')}")
+            logging.info(f"Successfully loaded data into DB for city={data.get('city', 'UNKNOWN')}")
+            return
 
-    except psycopg2.Error as e:
-        logging.error(f"Database error: {e}", exc_info=True)
+        except psycopg2.Error as e:
+            logging.error(f"Database error: {e}", exc_info=True)
 
-        if conn:
-            conn.rollback()
+            if conn:  # если в переменную conn что-то есть и могло записаться в БД, то
+                conn.rollback()  # делаем откат
 
-        raise
+            if attempt == 2:
+                raise  # прерываем и выбрасываем ошибку
+            time.sleep(2 ** (attempt + 1))
 
-    finally:
-        if cursor:
-            cursor.close()
+        finally:
+            if cursor:
+                cursor.close()
 
-        if conn:
-            conn.close()
+            if conn:
+                conn.close()
 
 
-# def retry(retries=3):
-#     for attempt in range(retries):
-#         except (requests.exceptions.RequestException, psycopg2.Error) as e:
-#             if e.response is None or 500 <= e.response.status_code < 600 or e.response.status_code == 429:
-#                 retry
-#             else:
-#                 raise
 def main():
     weather_dict = extract_data()
     data = transform_data(weather_dict)
