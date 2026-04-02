@@ -88,8 +88,7 @@ def load_data(data: dict):
             cursor = conn.cursor()
 
             query = """INSERT INTO weather (city, temp, wind_speed, weather_time, feels_like, description) 
-                    VALUES (%(city)s, %(temp)s, %(wind_speed)s, %(weather_time)s, %(feels_like)s, %(description)s)
-                    ON CONFLICT (city, weather_time) DO NOTHING;"""
+                    VALUES (%(city)s, %(temp)s, %(wind_speed)s, %(weather_time)s, %(feels_like)s, %(description)s);"""
 
             cursor.execute(query, data)
             conn.commit()
