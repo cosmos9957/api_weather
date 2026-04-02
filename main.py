@@ -1,6 +1,6 @@
-import time
 import logging
 import os
+import time
 from datetime import datetime, timezone
 
 import requests
@@ -18,13 +18,14 @@ API_KEY = os.getenv("API_KEY")
 CITY = os.getenv("CITY")
 RESPONSE_FORMAT = os.getenv("RESPONSE_FORMAT")
 
-url = f"https://api.openweathermap.org/data/2.5/weather?q={CITY}&appid={API_KEY}&units={RESPONSE_FORMAT}"
+MAX_RETRIES = 3
 
 
-def extract_data() -> dict:
-    for attempt in range(3):
+def extract_data(api_key: str, city: str, response_format: str) -> dict:
+    url = f"https://api.openweathermap.org/data/2.5/weather?q={city}&appid={api_key}&units={response_format}"
+    for attempt in range(MAX_RETRIES):
         try:
-            logging.info(f"Requesting weather data for city={CITY}")
+            logging.info(f"Requesting weather data for city={city}")
 
             response_api = requests.get(url, timeout=3)
             response_api.raise_for_status()
@@ -32,7 +33,7 @@ def extract_data() -> dict:
             logging.info("Weather data successfully received")
             return response_api.json()
         except requests.exceptions.RequestException as e:
-            logging.error(f"Requesting weather data for city={CITY} is not successful. Error: {e}",exc_info=True)
+            logging.error(f"Requesting weather data for city={city} is not successful. Error: {e}", exc_info=True)
             if attempt == 2:
                 raise
             time.sleep(2 ** (attempt + 1))
@@ -72,7 +73,7 @@ def transform_data(weather_dict: dict) -> dict:
 
 
 def load_data(data: dict):
-    for attempt in range(3):
+    for attempt in range(MAX_RETRIES):
         conn = None
         cursor = None
         try:
@@ -102,7 +103,7 @@ def load_data(data: dict):
             if conn:  # если в переменную conn что-то есть и могло записаться в БД, то
                 conn.rollback()  # делаем откат
 
-            if attempt == 2:
+            if attempt == MAX_RETRIES - 1:
                 raise  # прерываем и выбрасываем ошибку
             time.sleep(2 ** (attempt + 1))
 
@@ -115,7 +116,7 @@ def load_data(data: dict):
 
 
 def main():
-    weather_dict = extract_data()
+    weather_dict = extract_data(api_key=API_KEY, city=CITY, response_format=RESPONSE_FORMAT)
     data = transform_data(weather_dict)
     load_data(data)
 
