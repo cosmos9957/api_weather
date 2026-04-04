@@ -2,6 +2,7 @@ import logging
 import os
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 
 import requests
 import psycopg2
@@ -12,8 +13,9 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
+BASE_DIR = Path(__file__).resolve().parent
+load_dotenv(BASE_DIR / ".env")
 
-load_dotenv()
 API_KEY = os.getenv("API_KEY")
 CITY = os.getenv("CITY")
 RESPONSE_FORMAT = os.getenv("RESPONSE_FORMAT")
@@ -101,11 +103,11 @@ def load_data(data: dict):
         except psycopg2.Error as e:
             logging.error(f"Database error: {e}", exc_info=True)
 
-            if conn:  # если в переменную conn что-то есть и могло записаться в БД, то
-                conn.rollback()  # делаем откат
+            if conn:
+                conn.rollback()
 
             if attempt == MAX_RETRIES - 1:
-                raise  # прерываем и выбрасываем ошибку
+                raise
             time.sleep(2 ** (attempt + 1))
 
         finally:
