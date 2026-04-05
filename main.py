@@ -17,7 +17,7 @@ BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
 
 API_KEY = os.getenv("API_KEY")
-CITY = os.getenv("CITY")
+CITIES = os.getenv("CITIES")
 RESPONSE_FORMAT = os.getenv("RESPONSE_FORMAT")
 
 MAX_RETRIES = 3
@@ -29,10 +29,10 @@ def extract_data(api_key: str, city: str, response_format: str) -> dict:
         try:
             logging.info(f"Requesting weather data for city={city}")
 
-            response_api = requests.get(url, timeout=3)
+            response_api = requests.get(url, timeout=10)
             response_api.raise_for_status()
 
-            logging.info("Weather data successfully received")
+            logging.info(f"Weather data for city={city} successfully received")
             return response_api.json()
         except requests.exceptions.RequestException as e:
             logging.error(f"Requesting weather data for city={city} is not successful. Error: {e}", exc_info=True)
@@ -119,9 +119,21 @@ def load_data(data: dict):
 
 
 def main():
-    weather_dict = extract_data(api_key=API_KEY, city=CITY, response_format=RESPONSE_FORMAT)
-    data = transform_data(weather_dict)
-    load_data(data)
+    list_of_cities = [city.strip() for city in CITIES.split(",")]
+
+    for city in list_of_cities:
+        try:
+            logging.info(f"Start processing city={city}")
+
+            weather_dict = extract_data(api_key=API_KEY, city=city, response_format=RESPONSE_FORMAT)
+            data = transform_data(weather_dict)
+            load_data(data)
+
+            logging.info(f"Finished processing city={city}")
+
+        except Exception as e:
+            logging.error(f"Failed processing city={city}: {e}", exc_info=True)
+            continue
 
 if __name__ == "__main__":
     main()
