@@ -1,2 +1,4 @@
 .env
 api_json_info.py
+notebook.py
+cron.log
