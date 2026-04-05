@@ -2,7 +2,6 @@ import time
 import logging
 import os
 from datetime import datetime, timezone
-from pathlib import Path
 
 import requests
 import psycopg2
@@ -13,11 +12,10 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
-BASE_DIR = Path(__file__).resolve().parent
-load_dotenv(BASE_DIR / ".env")
 
+load_dotenv()
 API_KEY = os.getenv("API_KEY")
-CITIES = os.getenv("CITIES")
+CITY = os.getenv("CITY")
 RESPONSE_FORMAT = os.getenv("RESPONSE_FORMAT")
 
 url = f"https://api.openweathermap.org/data/2.5/weather?q={CITY}&appid={API_KEY}&units={RESPONSE_FORMAT}"
@@ -28,10 +26,10 @@ def extract_data() -> dict:
         try:
             logging.info(f"Requesting weather data for city={CITY}")
 
-            response_api = requests.get(url, timeout=10)
+            response_api = requests.get(url, timeout=3)
             response_api.raise_for_status()
 
-            logging.info(f"Weather data for city={city} successfully received")
+            logging.info("Weather data successfully received")
             return response_api.json()
         except requests.exceptions.RequestException as e:
             logging.error(f"Requesting weather data for city={CITY} is not successful. Error: {e}",exc_info=True)
@@ -101,11 +99,11 @@ def load_data(data: dict):
         except psycopg2.Error as e:
             logging.error(f"Database error: {e}", exc_info=True)
 
-            if conn:
-                conn.rollback()
+            if conn:  # если в переменную conn что-то есть и могло записаться в БД, то
+                conn.rollback()  # делаем откат
 
-            if attempt == MAX_RETRIES - 1:
-                raise
+            if attempt == 2:
+                raise  # прерываем и выбрасываем ошибку
             time.sleep(2 ** (attempt + 1))
 
         finally:
@@ -117,21 +115,9 @@ def load_data(data: dict):
 
 
 def main():
-    list_of_cities = [city.strip() for city in CITIES.split(",")]
-
-    for city in list_of_cities:
-        try:
-            logging.info(f"Start processing city={city}")
-
-            weather_dict = extract_data(api_key=API_KEY, city=city, response_format=RESPONSE_FORMAT)
-            data = transform_data(weather_dict)
-            load_data(data)
-
-            logging.info(f"Finished processing city={city}")
-
-        except Exception as e:
-            logging.error(f"Failed processing city={city}: {e}", exc_info=True)
-            continue
+    weather_dict = extract_data()
+    data = transform_data(weather_dict)
+    load_data(data)
 
 if __name__ == "__main__":
     main()
