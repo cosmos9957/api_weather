@@ -2,6 +2,7 @@ import logging
 import os
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 
 import requests
 import psycopg2
@@ -13,9 +14,11 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
-load_dotenv()
+BASE_DIR = Path(__file__).resolve().parent
+load_dotenv(BASE_DIR / ".env")
+
 API_KEY = os.getenv("API_KEY")
-CITY = os.getenv("CITY")
+CITIES = os.getenv("CITIES")
 RESPONSE_FORMAT = os.getenv("RESPONSE_FORMAT")
 
 MAX_RETRIES = 3
@@ -27,14 +30,15 @@ def extract_data(api_key: str, city: str, response_format: str) -> dict:
         try:
             logging.info(f"Requesting weather data for city={city}")
 
-            response_api = requests.get(url, timeout=3)
+            response_api = requests.get(url, timeout=10)
             response_api.raise_for_status()
 
             logging.info("Weather data successfully received")
             return response_api.json()
+
         except requests.exceptions.RequestException as e:
             logging.error(f"Requesting weather data for city={city} is not successful. Error: {e}", exc_info=True)
-            if attempt == 2:
+            if attempt == MAX_RETRIES - 1:
                 raise
             time.sleep(2 ** (attempt + 1))
     raise RuntimeError("Failed to fetch data after retries")
@@ -63,8 +67,7 @@ def transform_data(weather_dict: dict) -> dict:
         return data
 
     except KeyError as e:
-        logging.error(f"Missing key in API response for city={weather_dict.get('name')}: {e}",
-                      exc_info=True)
+        logging.error(f"Missing key in API response for city={weather_dict.get('name')}: {e}", exc_info=True)
         raise
 
     except TypeError as e:
@@ -89,7 +92,8 @@ def load_data(data: dict):
             cursor = conn.cursor()
 
             query = """INSERT INTO weather (city, temp, wind_speed, weather_time, feels_like, description) 
-                    VALUES (%(city)s, %(temp)s, %(wind_speed)s, %(weather_time)s, %(feels_like)s, %(description)s);"""
+                    VALUES (%(city)s, %(temp)s, %(wind_speed)s, %(weather_time)s, %(feels_like)s, %(description)s)
+                    ON CONFLICT (city, weather_time) DO NOTHING;"""
 
             cursor.execute(query, data)
             conn.commit()
@@ -100,11 +104,11 @@ def load_data(data: dict):
         except psycopg2.Error as e:
             logging.error(f"Database error: {e}", exc_info=True)
 
-            if conn:  # если в переменную conn что-то есть и могло записаться в БД, то
-                conn.rollback()  # делаем откат
+            if conn:
+                conn.rollback()
 
             if attempt == MAX_RETRIES - 1:
-                raise  # прерываем и выбрасываем ошибку
+                raise
             time.sleep(2 ** (attempt + 1))
 
         finally:
@@ -116,9 +120,21 @@ def load_data(data: dict):
 
 
 def main():
-    weather_dict = extract_data(api_key=API_KEY, city=CITY, response_format=RESPONSE_FORMAT)
-    data = transform_data(weather_dict)
-    load_data(data)
+    list_of_cities = [city.strip() for city in CITIES.split(",")]
+
+    for city in list_of_cities:
+        try:
+            logging.info(f"Start processing city={city}")
+
+            weather_dict = extract_data(api_key=API_KEY, city=city, response_format=RESPONSE_FORMAT)
+            data = transform_data(weather_dict)
+            load_data(data)
+
+            logging.info(f"Finished processing city={city}")
+
+        except Exception as e:
+            logging.error(f"Failed processing city={city}: {e}", exc_info=True)
+            continue
 
 if __name__ == "__main__":
     main()
