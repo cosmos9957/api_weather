@@ -1,6 +1,6 @@
+import time
 import logging
 import os
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -21,14 +21,13 @@ API_KEY = os.getenv("API_KEY")
 CITIES = os.getenv("CITIES")
 RESPONSE_FORMAT = os.getenv("RESPONSE_FORMAT")
 
-MAX_RETRIES = 3
+url = f"https://api.openweathermap.org/data/2.5/weather?q={CITY}&appid={API_KEY}&units={RESPONSE_FORMAT}"
 
 
-def extract_data(api_key: str, city: str, response_format: str) -> dict:
-    url = f"https://api.openweathermap.org/data/2.5/weather?q={city}&appid={api_key}&units={response_format}"
-    for attempt in range(MAX_RETRIES):
+def extract_data() -> dict:
+    for attempt in range(3):
         try:
-            logging.info(f"Requesting weather data for city={city}")
+            logging.info(f"Requesting weather data for city={CITY}")
 
             response_api = requests.get(url, timeout=10)
             response_api.raise_for_status()
@@ -76,7 +75,7 @@ def transform_data(weather_dict: dict) -> dict:
 
 
 def load_data(data: dict):
-    for attempt in range(MAX_RETRIES):
+    for attempt in range(3):
         conn = None
         cursor = None
         try:
