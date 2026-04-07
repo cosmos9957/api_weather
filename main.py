@@ -33,7 +33,7 @@ def extract_data(api_key: str, city: str, response_format: str) -> dict:
             response_api = requests.get(url, timeout=10)
             response_api.raise_for_status()
 
-            logging.info("Weather data successfully received")
+            logging.info(f"Weather data successfully received for city={city}")
             return response_api.json()
 
         except requests.exceptions.RequestException as e:
@@ -75,27 +75,20 @@ def transform_data(weather_dict: dict) -> dict:
         raise
 
 
-def load_data(data: dict):
+def load_data(data: dict, conn):
     for attempt in range(MAX_RETRIES):
-        conn = None
         cursor = None
         try:
             logging.info(f"Start loading data for city={data.get('city', 'UNKNOWN')}")
-
-            conn = psycopg2.connect(
-                dbname=os.getenv("DBNAME"),
-                user=os.getenv("DB_USER"),
-                password=os.getenv("DB_PASSWORD"),
-                host=os.getenv("HOST"),
-                port=os.getenv("PORT")
-            )
-            cursor = conn.cursor()
 
             query = """INSERT INTO weather (city, temp, wind_speed, weather_time, feels_like, description) 
                     VALUES (%(city)s, %(temp)s, %(wind_speed)s, %(weather_time)s, %(feels_like)s, %(description)s)
                     ON CONFLICT (city, weather_time) DO NOTHING;"""
 
+            cursor = conn.cursor()
+
             cursor.execute(query, data)
+
             conn.commit()
 
             logging.info(f"Successfully loaded data into DB for city={data.get('city', 'UNKNOWN')}")
@@ -115,26 +108,43 @@ def load_data(data: dict):
             if cursor:
                 cursor.close()
 
-            if conn:
-                conn.close()
-
 
 def main():
-    list_of_cities = [city.strip() for city in CITIES.split(",")]
+    cities = [city.strip() for city in CITIES.split(",")]
 
-    for city in list_of_cities:
-        try:
-            logging.info(f"Start processing city={city}")
+    conn = None
 
-            weather_dict = extract_data(api_key=API_KEY, city=city, response_format=RESPONSE_FORMAT)
-            data = transform_data(weather_dict)
-            load_data(data)
+    try:
+        conn = psycopg2.connect(
+            dbname=os.getenv("DBNAME"),
+            user=os.getenv("DB_USER"),
+            password=os.getenv("DB_PASSWORD"),
+            host=os.getenv("HOST"),
+            port=os.getenv("PORT")
+        )
 
-            logging.info(f"Finished processing city={city}")
+        for city in cities:
+            try:
+                logging.info(f"Start processing city={city}")
 
-        except Exception as e:
-            logging.error(f"Failed processing city={city}: {e}", exc_info=True)
-            continue
+                weather_dict = extract_data(api_key=API_KEY, city=city, response_format=RESPONSE_FORMAT)
+                data = transform_data(weather_dict)
+                load_data(data, conn)
+
+                logging.info(f"Finished processing city={city}")
+
+            except Exception as e:
+                logging.error(f"Failed processing city={city}: {e}", exc_info=True)
+                continue
+
+    except psycopg2.Error as e:
+        logging.error(f"Failed to connect to DB: {e}", exc_info=True)
+        raise
+
+    finally:
+        if conn:
+            conn.close()
+
 
 if __name__ == "__main__":
     main()
